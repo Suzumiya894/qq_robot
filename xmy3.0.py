@@ -14,18 +14,7 @@ class xumingyu:
         self.msg_num = {}
         self.headers = {'Content-Type': 'application/json'}
         self.group_image = {
-            '2317423248':'/root/program/xmy/code/image/yew.jpg',
-            '1002072864':'/root/program/xmy/code/image/wnt.jpg',
-            '1299124620':'/root/program/xmy/code/image/lh.jpg',
-            '416946348':'/root/program/xmy/code/image/wyy.jpg',
-            '1441051883':'/root/program/xmy/code/image/cs.jpg',
-            '747166950':'/root/program/xmy/code/image/chs.jpg',
-            '466387044':'/root/program/xmy/code/image/wwh.jpg',
-            '1739430580':'/root/program/xmy/code/image/wjt.jpg',
-            '2353898810':'/root/program/xmy/code/image/cjy.jpg',
-            '1056037721':'/root/program/xmy/code/image/tzy.jpg',
-            '1273753243':'/root/program/xmy/code/image/zzc.jpg',
-            '2733188807':'/root/program/xmy/code/image/xmy.jpg',
+            "qq_id":"path_to_image"
         }
         self.chatbot = AsyncChatbot(config={
             "email": "email",
