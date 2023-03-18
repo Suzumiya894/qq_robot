@@ -3,7 +3,8 @@ import aiohttp
 import json
 import os
 import asyncio
-from revChatGPT.V1 import AsyncChatbot
+# from revChatGPT.V1 import AsyncChatbot        # 使用v1会被封号，改用v3
+from revChatGPT.V3 import Chatbot
 
 import threading
 app = quart.Quart(__name__)
@@ -14,57 +15,74 @@ class xumingyu:
         self.msg_num = {}
         self.headers = {'Content-Type': 'application/json'}
         self.group_image = {
-            "qq_id":"path_to_image"
         }
-        self.chatbot = AsyncChatbot(config={
-            "email": "email",
-            "password": "*****"
-        })
+        # self.chatbot = AsyncChatbot(config={
+        #     "email": "yueerwen@sjtu.edu.cn",
+        #     "password": "#ya.EnKWC5!T*PF"
+        # })    # v1版本
+        self.chatbot = Chatbot(api_key="")    # v3版本
         self.question_list = []
 
     async def request(self, client, url, body=None):
         response = await client.post('http://127.0.0.1:5700/' + url, json=body)
         return response
 
+    def v3_ai(self, prompt):
+        message = ""
+        for data in self.chatbot.ask(prompt):
+            # print(data, end="", flush=True)
+            message += data
+        return message
+
+    # 该函数是revChatGPT.v1版本的，v3版本不支持异步
     async def ai(self, prompt):
         message = ""
         async for data in self.chatbot.ask(prompt):
             message = data["message"]
         return message
 
-    async def chat_robot(self, client, gid, uid, task_list, prompt):
-        # await asyncio.sleep(5) #没用
-        message = await self.ai(prompt)
-        tmp_message = '[CQ:at,qq=' + str(uid) + message
-        self.recent_message[str(gid)][self.msg_num[str(gid)]%5] = tmp_message
-        self.msg_num[str(gid)] += 1
-        task_list.append(
-            asyncio.create_task(
-                self.request(
-                    client, 
-                    "send_group_msg", 
-                    {'group_id':str(gid), 'message':tmp_message}
-                )
-            )
-        )
+    # async def chat_robot(self, client, gid, uid, task_list, prompt):
+    #     message = await self.ai(prompt)
+    #     tmp_message = '[CQ:at,qq=' + str(uid) + message
+    #     self.recent_message[str(gid)][self.msg_num[str(gid)]%5] = tmp_message
+    #     self.msg_num[str(gid)] += 1
+    #     task_list.append(
+    #         asyncio.create_task(
+    #             self.request(
+    #                 client, 
+    #                 "send_group_msg", 
+    #                 {'group_id':str(gid), 'message':tmp_message}
+    #             )
+    #         )
+    #     )
 
-    async def threading_chat_robot(self, gid, uid, prompt):
+    async def chat_robot(self, gid, uid, prompt):
         try:
-            message = await self.ai(prompt)
+            message = self.v3_ai(prompt)        # v3版本
+            # message = await self.ai(prompt)   # v1版本
             print("chatGPT: " + message)
         except Exception as e:
             message = str(e)
-        tmp_message = '[CQ:at,qq=' + str(uid) + ']' +  message
-        self.recent_message[str(gid)][self.msg_num[str(gid)]%5] = tmp_message
-        self.msg_num[str(gid)] += 1
-        async with aiohttp.ClientSession() as client:
-            print(tmp_message)
-            response = await self.request(
-                    client, 
-                    "send_group_msg", 
-                    {'group_id':str(gid), 'message':tmp_message}
-                )
-            print(response)
+        if gid is not None:
+            tmp_message = '[CQ:at,qq=' + str(uid) + ']' +  message
+            self.recent_message[str(gid)][self.msg_num[str(gid)]%5] = tmp_message
+            self.msg_num[str(gid)] += 1
+            async with aiohttp.ClientSession() as client:
+                print(tmp_message)
+                response = await self.request(
+                        client, 
+                        "send_group_msg", 
+                        {'group_id':str(gid), 'message':tmp_message}
+                    )
+                print(response)
+        else:
+            async with aiohttp.ClientSession() as client:
+                response = await self.request(
+                        client, 
+                        "send_private_msg", 
+                        {'user_id':str(uid), 'message':message}
+                    )
+                print(response)
 
     def between_function(self):     # 用来协调多线程和异步之间的函数
         global lock 
@@ -78,12 +96,15 @@ class xumingyu:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
-        loop.run_until_complete(self.threading_chat_robot(dic["gid"], dic["uid"], dic["message"]))
+        loop.run_until_complete(self.chat_robot(dic["gid"], dic["uid"], dic["message"]))
         loop.close()
         self.question_list.pop(0)       # 发完消息才能退出问题队列
-        lock.release()
-        
+        lock.release()       
 
+    def private_talk(self, message, uid):
+        self.question_list.append({"gid":None, "uid":uid, "message":message})    #chatgpt的问题队列
+
+    # 群消息处理
     async def main(self, message, uid, gid, name):
         myclient = aiohttp.ClientSession()
         async with myclient as client:
@@ -156,7 +177,7 @@ class xumingyu:
                             self.request(
                                 client, 
                                 "set_group_ban", 
-                                {'group_id':str(gid), 'user_id':str(uid), 'duration':86400}
+                                {'group_id':str(gid), 'user_id':str(uid), 'duration':600}
                             )
                         )
                     )   # duartion = 86400, 禁言一天
@@ -171,7 +192,7 @@ class xumingyu:
                     )   # 修改群名片
                     if os.path.isfile(self.group_image[str(uid)]):
                         #设置为群头像
-                        # print("设置为群头像")
+                        print("设置为群头像")
                         task_list.append(
                             asyncio.create_task(
                                 self.request(
@@ -284,16 +305,25 @@ async def post_data():
         gid = data.get('group_id')  # 获取群号
         uid = data.get('sender').get('user_id')  # 获取信息发送者的 QQ号码
         #print(type(uid))   # str
+        #获取发送者的昵称或群名片
         if data.get('sender').get('card') != '':
             name = data.get('sender').get('card')
         else:
             name = data.get('sender').get('nickname')
         message = data.get('raw_message')  # 获取原始信息
-        #获取发送者的昵称或群名片
-        print("*" * 10 + "收到消息" + "*" * 10)
+        print("*" * 10 + "收到群聊消息" + "*" * 10)
         await xmy.main(message, uid, gid, name)  # 将 Q号和原始信息传到我们的后台
-        t1 = threading.Thread(target=xmy.between_function, args=())
+        t1 = threading.Thread(target=xmy.between_function, args=()) # chatgpt回复较慢，新开一个线程用于chatgpt对话
         t1.start()
+    elif data.get('message_type') == 'private':
+        uid = data.get('sender').get('user_id')  # 获取信息发送者的 QQ号码
+        # name = data.get('sender').get('nickname')
+        message = data.get('raw_message')  # 获取原始信息
+        print("*" * 10 + "收到私聊消息" + "*" * 10)
+        xmy.private_talk(message, uid)
+        t1 = threading.Thread(target=xmy.between_function, args=()) # chatgpt回复较慢，新开一个线程用于chatgpt对话
+        t1.start()
+        
     return "None"
 
 if __name__ == "__main__":
